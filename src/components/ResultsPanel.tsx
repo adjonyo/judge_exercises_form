@@ -14,6 +14,7 @@ interface Props {
   reps: RepData[];
   faults: FormFault[];
   duration: number;
+  recordedVideoUrl: string;
   onReset: () => void;
 }
 
@@ -46,7 +47,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, duration, onReset }: Props) {
+export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, duration, recordedVideoUrl, onReset }: Props) {
   const criticalFaults = faults.filter((f) => f.severity === "critical").length;
   const warningFaults = faults.filter((f) => f.severity === "warning").length;
   const mins = Math.floor(duration / 60);
@@ -62,12 +63,24 @@ export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, 
     <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">Results — {exercise}</h2>
-        <button
-          onClick={onReset}
-          className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-        >
-          Analyze another video
-        </button>
+        <div className="flex items-center gap-3">
+          <a
+            href={recordedVideoUrl}
+            download={`formjudge-${exercise.replace(/\s+/g, "-")}-${Date.now()}.webm`}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-500 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Video
+          </a>
+          <button
+            onClick={onReset}
+            className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            Analyze another video
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

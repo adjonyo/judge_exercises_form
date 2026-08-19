@@ -1,3 +1,7 @@
+# Agent instruction files
+AGENTS.md
+project.md
+
 # Logs
 logs
 *.log
@@ -11,6 +15,7 @@ node_modules
 dist
 dist-ssr
 *.local
+videos/
 
 # Editor directories and files
 .vscode/*

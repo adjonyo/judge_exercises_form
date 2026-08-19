@@ -13,6 +13,7 @@ interface AnalysisResult {
   reps: { repNumber: number; score: number; faults: FormFault[]; primaryAngle: number }[];
   faults: FormFault[];
   videoUrl: string;
+  recordedVideoUrl: string;
   duration: number;
 }
 
@@ -110,6 +111,7 @@ function App() {
             reps={result.reps}
             faults={result.faults}
             duration={result.duration}
+            recordedVideoUrl={result.recordedVideoUrl}
             onReset={handleReset}
           />
         )}
