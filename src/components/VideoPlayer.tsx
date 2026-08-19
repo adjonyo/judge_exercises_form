@@ -133,13 +133,27 @@ function drawHud(
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    if (!isFinite(time) || !isFinite(video.duration)) {
+      reject(new Error(`Invalid seek: time=${time}, duration=${video.duration}`));
+      return;
+    }
+    const clampedTime = Math.min(time, video.duration);
+    if (Math.abs(video.currentTime - clampedTime) < 0.01) {
+      resolve();
+      return;
+    }
+    const timeout = setTimeout(() => {
+      video.removeEventListener("seeked", handler);
+      reject(new Error(`Seek timeout at ${clampedTime}s`));
+    }, 5000);
     const handler = () => {
+      clearTimeout(timeout);
       video.removeEventListener("seeked", handler);
       resolve();
     };
     video.addEventListener("seeked", handler);
-    video.currentTime = time;
+    video.currentTime = clampedTime;
   });
 }
 
@@ -167,6 +181,10 @@ function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder
   return null;
 }
 
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -178,6 +196,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const [landmarks, setLandmarks] = useState<Landmarks[]>([]);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef(false);
 
   const videoUrl = useMemo(() => URL.createObjectURL(videoFile), [videoFile]);
 
@@ -192,6 +211,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
+    abortRef.current = false;
     setIsProcessing(true);
     setProgress(0);
     setError(null);
@@ -208,17 +228,37 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
 
     const detector = new RepDetector(exerciseId);
 
-    await new Promise<void>((resolve, reject) => {
-      if (video.readyState >= 1) {
-        resolve();
-      } else {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error("Failed to load video"));
-      }
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if (video.readyState >= 1) {
+          resolve();
+        } else {
+          const onMeta = () => { cleanup(); resolve(); };
+          const onErr = () => { cleanup(); reject(new Error("Failed to load video")); };
+          const cleanup = () => {
+            video.removeEventListener("loadedmetadata", onMeta);
+            video.removeEventListener("error", onErr);
+          };
+          video.addEventListener("loadedmetadata", onMeta);
+          video.addEventListener("error", onErr);
+        }
+      });
+    } catch (err) {
+      console.error("Video load error:", err);
+      setError("Failed to load video metadata. Try a different video format.");
+      setIsProcessing(false);
+      return;
+    }
 
     const w = video.videoWidth;
     const h = video.videoHeight;
+
+    if (!w || !h) {
+      setError("Could not read video dimensions. The file may be corrupt.");
+      setIsProcessing(false);
+      return;
+    }
+
     setVideoDimensions({ width: w, height: h });
     canvas.width = w;
     canvas.height = h;
@@ -232,43 +272,67 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
     const recorderResult = tryCreateRecorder(canvas);
 
     const duration = video.duration;
-    const fps = 30;
-    const frameInterval = 1000 / fps;
+
+    if (!isFinite(duration) || duration <= 0) {
+      setError("Could not determine video duration. Try a different video file.");
+      setIsProcessing(false);
+      return;
+    }
+
+    const fps = 10;
+    const frameInterval = 1 / fps;
     let currentTime = 0;
+    let frameCount = 0;
+    const totalFrames = Math.ceil(duration * fps);
 
     try {
       while (currentTime < duration) {
-        await seekTo(video, currentTime);
+        if (abortRef.current) break;
 
-        const results = poseLandmarker.detectForVideo(video, performance.now());
-
-        ctx.drawImage(video, 0, 0, w, h);
-
-        if (results.landmarks && results.landmarks.length > 0) {
-          const lm = results.landmarks[0] as unknown as Landmarks[];
-          setLandmarks(lm);
-
-          const frameResult = detector.processFrame(lm);
-          setCurrentPhase(frameResult.phase);
-          setRepCount(frameResult.repCount);
-          setCurrentFaults(frameResult.faults);
-
-          drawSkeleton(ctx, lm, w, h);
-          drawHud(ctx, w, h, exerciseId, frameResult.repCount, frameResult.phase, frameResult.faults, (currentTime / duration) * 100);
-        } else {
-          const pct = (currentTime / duration) * 100;
-          const barY = h - 6;
-          ctx.fillStyle = "#374151";
-          ctx.fillRect(0, barY, w, 6);
-          ctx.fillStyle = "#6366f1";
-          ctx.fillRect(0, barY, w * (pct / 100), 6);
+        try {
+          await seekTo(video, currentTime);
+        } catch (seekErr) {
+          console.warn("Seek failed, skipping frame:", seekErr);
+          currentTime += frameInterval;
+          continue;
         }
 
-        currentTime += frameInterval / 1000;
-        setProgress((currentTime / duration) * 100);
+        try {
+          const results = poseLandmarker.detectForVideo(video, performance.now());
+
+          ctx.drawImage(video, 0, 0, w, h);
+
+          if (results.landmarks && results.landmarks.length > 0) {
+            const lm = results.landmarks[0] as unknown as Landmarks[];
+            setLandmarks(lm);
+
+            const frameResult = detector.processFrame(lm);
+            setCurrentPhase(frameResult.phase);
+            setRepCount(frameResult.repCount);
+            setCurrentFaults(frameResult.faults);
+
+            drawSkeleton(ctx, lm, w, h);
+            drawHud(ctx, w, h, exerciseId, frameResult.repCount, frameResult.phase, frameResult.faults, ((frameCount + 1) / totalFrames) * 100);
+          } else {
+            const pct = ((frameCount + 1) / totalFrames) * 100;
+            const barY = h - 6;
+            ctx.fillStyle = "#374151";
+            ctx.fillRect(0, barY, w, 6);
+            ctx.fillStyle = "#6366f1";
+            ctx.fillRect(0, barY, w * (pct / 100), 6);
+          }
+        } catch (frameErr) {
+          console.error("Frame processing error:", frameErr);
+        }
+
+        frameCount++;
+        setProgress((frameCount / totalFrames) * 100);
+
+        currentTime += frameInterval;
+        await yieldToMain();
       }
     } catch (err) {
-      console.error("Frame processing error:", err);
+      console.error("Processing loop error:", err);
     }
 
     if (recorderResult) {
@@ -314,7 +378,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
             height={videoDimensions.height}
           />
         )}
-        <canvas ref={canvasRef} className="hidden" />
+        <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, pointerEvents: "none" }} />
         {isProcessing && (
           <div className="absolute top-4 left-4 right-4">
             <div className="bg-black/70 backdrop-blur-sm rounded-lg p-3">
