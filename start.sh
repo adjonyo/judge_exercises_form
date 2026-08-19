@@ -8,7 +8,8 @@ npm install
 
 echo ""
 echo "==> Starting dev server..."
-echo "    Open http://localhost:5173 in your browser"
+echo "    Local:   http://localhost:5173"
+echo "    Tailscale: http://100.123.155.124:5173"
 echo "    Press Ctrl+C to stop"
 echo ""
 
