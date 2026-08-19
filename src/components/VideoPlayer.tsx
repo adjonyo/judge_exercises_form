@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getPoseLandmarker, POSE_LANDMARKS } from "../lib/pose";
 import { RepDetector } from "../lib/repDetector";
 import { Skeleton } from "./Skeleton";
@@ -177,8 +177,15 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const [currentFaults, setCurrentFaults] = useState<FormFault[]>([]);
   const [landmarks, setLandmarks] = useState<Landmarks[]>([]);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
+  const [error, setError] = useState<string | null>(null);
 
-  const videoUrl = URL.createObjectURL(videoFile);
+  const videoUrl = useMemo(() => URL.createObjectURL(videoFile), [videoFile]);
+
+  useEffect(() => {
+    return () => {
+      URL.revokeObjectURL(videoUrl);
+    };
+  }, [videoUrl]);
 
   const processVideo = useCallback(async () => {
     const video = videoRef.current;
@@ -187,8 +194,18 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
 
     setIsProcessing(true);
     setProgress(0);
+    setError(null);
 
-    const poseLandmarker = await getPoseLandmarker();
+    let poseLandmarker;
+    try {
+      poseLandmarker = await getPoseLandmarker();
+    } catch (err) {
+      console.error("Failed to load pose model:", err);
+      setError("Failed to load the pose detection model. Please check your connection and try again.");
+      setIsProcessing(false);
+      return;
+    }
+
     const detector = new RepDetector(exerciseId);
 
     await new Promise<void>((resolve, reject) => {
@@ -280,12 +297,6 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
     });
   }, [exerciseId, videoUrl, onAnalysisComplete]);
 
-  useEffect(() => {
-    return () => {
-      URL.revokeObjectURL(videoUrl);
-    };
-  }, [videoUrl]);
-
   return (
     <div className="w-full space-y-4">
       <div className="relative bg-black rounded-xl overflow-hidden">
@@ -350,6 +361,11 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         )}
       </div>
 
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
       {!isProcessing && (
         <button
           onClick={processVideo}
