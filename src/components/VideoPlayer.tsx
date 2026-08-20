@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { getPoseLandmarker } from "../lib/pose";
 import { RepDetector } from "../lib/repDetector";
 import { Skeleton } from "./Skeleton";
@@ -18,6 +18,7 @@ interface Props {
     faults: FormFault[];
     videoUrl: string;
     recordedVideoUrl: string;
+    recordedVideoMime: string;
     duration: number;
   }) => void;
 }
@@ -181,13 +182,14 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder; chunks: Blob[] } | null {
+function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder; chunks: Blob[]; mimeType: string } | null {
   try {
     const stream = canvas.captureStream(30);
     const types = [
       "video/webm;codecs=vp9",
       "video/webm;codecs=vp8",
       "video/webm",
+      "video/mp4",
     ];
     for (const mimeType of types) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
@@ -200,7 +202,7 @@ function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder
           if (e.data.size > 0) chunks.push(e.data);
         };
         recorder.start();
-        return { recorder, chunks };
+        return { recorder, chunks, mimeType };
       }
     }
   } catch (err) {
@@ -225,12 +227,6 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const [error, setError] = useState<string | null>(null);
 
   const videoUrl = useMemo(() => URL.createObjectURL(videoFile), [videoFile]);
-
-  useEffect(() => {
-    return () => {
-      URL.revokeObjectURL(videoUrl);
-    };
-  }, [videoUrl]);
 
   const processVideo = useCallback(async () => {
     const video = videoRef.current;
@@ -338,7 +334,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
 
       setProcessingStage("Setting up recording...");
 
-      let recorderResult: { recorder: MediaRecorder; chunks: Blob[] } | null = null;
+      let recorderResult: { recorder: MediaRecorder; chunks: Blob[]; mimeType: string } | null = null;
       try {
         recorderResult = tryCreateRecorder(canvas);
         console.log("[Analysis] Recorder created:", !!recorderResult);
@@ -421,7 +417,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
       }
 
       const recordedVideoUrl = recorderResult
-        ? URL.createObjectURL(new Blob(recorderResult.chunks, { type: "video/webm" }))
+        ? URL.createObjectURL(new Blob(recorderResult.chunks, { type: recorderResult.mimeType }))
         : videoUrl;
 
       console.log("[Analysis] Complete! Reps:", detector.getResult().totalReps);
@@ -433,6 +429,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         ...result,
         videoUrl,
         recordedVideoUrl,
+        recordedVideoMime: recorderResult?.mimeType ?? "video/webm",
         duration,
       });
     } catch (err) {

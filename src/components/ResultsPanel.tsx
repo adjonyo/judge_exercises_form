@@ -18,6 +18,7 @@ interface Props {
   faults: FormFault[];
   duration: number;
   recordedVideoUrl: string;
+  recordedVideoMime: string;
   onReset: () => void;
 }
 
@@ -50,7 +51,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function ResultsPanel({ exercise, totalReps, goodReps, badReps, overallScore, reps, faults, duration, recordedVideoUrl, onReset }: Props) {
+export function ResultsPanel({ exercise, totalReps, goodReps, badReps, overallScore, reps, faults, duration, recordedVideoUrl, recordedVideoMime, onReset }: Props) {
   const mins = Math.floor(duration / 60);
   const secs = Math.floor(duration % 60);
 
@@ -67,7 +68,7 @@ export function ResultsPanel({ exercise, totalReps, goodReps, badReps, overallSc
         <div className="flex items-center gap-3">
           <a
             href={recordedVideoUrl}
-            download={`formjudge-${exercise.replace(/\s+/g, "-")}-${Date.now()}.webm`}
+            download={`formjudge-${exercise.replace(/\s+/g, "-")}-${Date.now()}.${recordedVideoMime.includes("mp4") ? "mp4" : "webm"}`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-500 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -16,6 +16,7 @@ interface AnalysisResult {
   faults: FormFault[];
   videoUrl: string;
   recordedVideoUrl: string;
+  recordedVideoMime: string;
   duration: number;
 }
 
@@ -116,6 +117,7 @@ function App() {
             faults={result.faults}
             duration={result.duration}
             recordedVideoUrl={result.recordedVideoUrl}
+            recordedVideoMime={result.recordedVideoMime}
             onReset={handleReset}
           />
         )}
