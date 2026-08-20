@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { getPoseLandmarker } from "../lib/pose";
 import { RepDetector } from "../lib/repDetector";
 import { Skeleton } from "./Skeleton";
@@ -235,7 +235,13 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [error, setError] = useState<string | null>(null);
 
-  const videoUrl = useMemo(() => URL.createObjectURL(videoFile), [videoFile]);
+  const [videoUrl, setVideoUrl] = useState("");
+
+  useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = () => setVideoUrl(reader.result as string);
+    reader.readAsDataURL(videoFile);
+  }, [videoFile]);
 
   const processVideo = useCallback(async () => {
     const video = videoRef.current;
@@ -460,9 +466,10 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         <video
           ref={videoRef}
           src={videoUrl}
-          className="w-full"
+          className="w-full h-auto"
           muted
           playsInline
+          preload="metadata"
         />
         {landmarks.length > 0 && videoDimensions.width > 0 && (
           <Skeleton
@@ -471,7 +478,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
             height={videoDimensions.height}
           />
         )}
-        <canvas ref={canvasRef} className="hidden" />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none opacity-0" />
         {isProcessing && (
           <div className="absolute top-4 left-4 right-4">
             <div className="bg-black/70 backdrop-blur-sm rounded-lg p-3">
