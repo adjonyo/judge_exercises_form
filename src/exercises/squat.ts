@@ -30,10 +30,10 @@ const squatFormChecks: FormCheck[] = [
     message: "Go lower — knees should bend more at the bottom",
   },
   {
-    name: "knee_cave",
-    condition: (angles) => angles.leftKneeValgus < 160 || angles.rightKneeValgus < 160,
-    severity: "critical",
-    message: "Push knees outward — don't let them cave in",
+    name: "excessive_forward_knee",
+    condition: (angles, phase) => (phase === "descending" || phase === "bottom") && (angles.leftHip < 70 || angles.rightHip < 70),
+    severity: "warning",
+    message: "Knees tracking too far forward — sit back more",
   },
   {
     name: "forward_lean",
@@ -58,6 +58,10 @@ export const squatConfig: ExerciseConfig = {
   thresholds: { down: 110, up: 150 },
   formChecks: squatFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 23, vertex: 25, to: 27, label: "L" },
+    { from: 24, vertex: 26, to: 28, label: "R" },
+  ],
 };
 
 export function analyzeSquat(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

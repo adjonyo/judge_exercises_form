@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { getPoseLandmarker, POSE_LANDMARKS } from "../lib/pose";
+import { getPoseLandmarker } from "../lib/pose";
 import { RepDetector } from "../lib/repDetector";
 import { Skeleton } from "./Skeleton";
-import type { Landmarks, Phase, FormFault } from "../exercises/types";
+import { getExerciseById } from "../exercises";
+import type { Landmarks, Phase, FormFault, AngleLine } from "../exercises/types";
 
 interface Props {
   videoFile: File;
@@ -10,8 +11,10 @@ interface Props {
   onAnalysisComplete: (result: {
     exercise: string;
     totalReps: number;
+    goodReps: number;
+    badReps: number;
     overallScore: number;
-    reps: { repNumber: number; score: number; faults: FormFault[]; primaryAngle: number }[];
+    reps: { repNumber: number; score: number; faults: FormFault[]; primaryAngle: number; isGood: boolean }[];
     faults: FormFault[];
     videoUrl: string;
     recordedVideoUrl: string;
@@ -19,55 +22,68 @@ interface Props {
   }) => void;
 }
 
-const SKELETON_CONNECTIONS: [number, number][] = [
-  [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER],
-  [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.LEFT_ELBOW],
-  [POSE_LANDMARKS.LEFT_ELBOW, POSE_LANDMARKS.LEFT_WRIST],
-  [POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.RIGHT_ELBOW],
-  [POSE_LANDMARKS.RIGHT_ELBOW, POSE_LANDMARKS.RIGHT_WRIST],
-  [POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.LEFT_HIP],
-  [POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.RIGHT_HIP],
-  [POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.RIGHT_HIP],
-  [POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.LEFT_KNEE],
-  [POSE_LANDMARKS.LEFT_KNEE, POSE_LANDMARKS.LEFT_ANKLE],
-  [POSE_LANDMARKS.RIGHT_HIP, POSE_LANDMARKS.RIGHT_KNEE],
-  [POSE_LANDMARKS.RIGHT_KNEE, POSE_LANDMARKS.RIGHT_ANKLE],
-];
+const LINE_COLORS = ["#22c55e", "#f59e0b"];
 
-const JOINT_COLORS: Record<number, string> = {
-  [POSE_LANDMARKS.LEFT_SHOULDER]: "#22c55e",
-  [POSE_LANDMARKS.RIGHT_SHOULDER]: "#22c55e",
-  [POSE_LANDMARKS.LEFT_HIP]: "#22c55e",
-  [POSE_LANDMARKS.RIGHT_HIP]: "#22c55e",
-  [POSE_LANDMARKS.LEFT_KNEE]: "#f59e0b",
-  [POSE_LANDMARKS.RIGHT_KNEE]: "#f59e0b",
-  [POSE_LANDMARKS.LEFT_ANKLE]: "#f59e0b",
-  [POSE_LANDMARKS.RIGHT_ANKLE]: "#f59e0b",
-};
+function drawAngleLines(
+  ctx: CanvasRenderingContext2D,
+  lm: Landmarks[],
+  w: number,
+  h: number,
+  angleLines: AngleLine[],
+  primaryAngle: number,
+  phase: Phase
+) {
+    const fontSize = Math.max(12, w / 50);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
 
-function drawSkeleton(ctx: CanvasRenderingContext2D, lm: Landmarks[], w: number, h: number) {
-  for (const [i, j] of SKELETON_CONNECTIONS) {
-    const a = lm[i];
-    const b = lm[j];
-    if (!a || !b) continue;
-    if ((a.visibility ?? 1) < 0.5 || (b.visibility ?? 1) < 0.5) continue;
-    ctx.beginPath();
-    ctx.moveTo(a.x * w, a.y * h);
-    ctx.lineTo(b.x * w, b.y * h);
-    ctx.strokeStyle = "#6366f1";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.stroke();
-  }
+    for (let i = 0; i < angleLines.length; i++) {
+      const line = angleLines[i];
+      const from = lm[line.from];
+      const vertex = lm[line.vertex];
+      const to = lm[line.to];
+      if (!from || !vertex || !to) continue;
+      if ((from.visibility ?? 1) < 0.3 || (vertex.visibility ?? 1) < 0.3 || (to.visibility ?? 1) < 0.3) continue;
 
-  for (let idx = 0; idx < lm.length; idx++) {
-    const pt = lm[idx];
-    if ((pt.visibility ?? 1) < 0.5) continue;
-    ctx.beginPath();
-    ctx.arc(pt.x * w, pt.y * h, 3, 0, Math.PI * 2);
-    ctx.fillStyle = JOINT_COLORS[idx] ?? "#6366f1";
-    ctx.fill();
-  }
+      const fx = from.x * w, fy = from.y * h;
+      const vx = vertex.x * w, vy = vertex.y * h;
+      const tx = to.x * w, ty = to.y * h;
+
+      const color = LINE_COLORS[i % LINE_COLORS.length];
+
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(vx, vy);
+      ctx.lineTo(tx, ty);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(3, w / 200);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(vx, vy, Math.max(5, w / 120), 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      const midX = (fx + tx) / 2;
+      const midY = (fy + ty) / 2;
+      const labelX = vx + (vx - midX) * 0.3;
+      const labelY = vy + (vy - midY) * 0.3;
+
+      const angleText = `${Math.round(primaryAngle)}°`;
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const tw = ctx.measureText(angleText).width;
+
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.beginPath();
+      ctx.roundRect(labelX - tw / 2 - 4, labelY - fontSize / 2 - 2, tw + 8, fontSize + 4, 4);
+      ctx.fill();
+
+      const hasFault = phase === "bottom";
+      ctx.fillStyle = hasFault ? "#ef4444" : color;
+      ctx.fillText(angleText, labelX, labelY);
+    }
 }
 
 function drawHud(
@@ -75,7 +91,8 @@ function drawHud(
   w: number,
   h: number,
   exerciseId: string,
-  repCount: number,
+  goodReps: number,
+  badReps: number,
   phase: Phase,
   faults: FormFault[],
   progress: number
@@ -105,12 +122,13 @@ function drawHud(
   ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
   ctx.fillText(phaseLabel, w - pad - phaseWidth + 12, pad + fontSize + 4);
 
-  const repLabel = `Reps: ${repCount}`;
+  const repLabel = `${goodReps}✓  ${badReps}✗`;
   const repWidth = ctx.measureText(repLabel).width + 24;
   ctx.fillStyle = "rgba(0,0,0,0.6)";
   ctx.roundRect(w - pad - phaseWidth - 12 - repWidth, pad, repWidth, fontSize + pad * 2, 8);
   ctx.fill();
   ctx.fillStyle = "#ffffff";
+  ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
   ctx.fillText(repLabel, w - pad - phaseWidth - 12 - repWidth + 12, pad + fontSize + 4);
 
   if (faults.length > 0) {
@@ -134,10 +152,6 @@ function drawHud(
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!isFinite(time) || !isFinite(video.duration)) {
-      reject(new Error(`Invalid seek: time=${time}, duration=${video.duration}`));
-      return;
-    }
     const clampedTime = Math.min(time, video.duration);
     if (Math.abs(video.currentTime - clampedTime) < 0.01) {
       resolve();
@@ -158,31 +172,31 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
 }
 
 function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder; chunks: Blob[] } | null {
-  const stream = canvas.captureStream(30);
-  const types = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-  ];
-  for (const mimeType of types) {
-    if (MediaRecorder.isTypeSupported(mimeType)) {
-      const chunks: Blob[] = [];
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 8_000_000,
-      });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      recorder.start();
-      return { recorder, chunks };
+  try {
+    const stream = canvas.captureStream(30);
+    const types = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+    ];
+    for (const mimeType of types) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        const chunks: Blob[] = [];
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 8_000_000,
+        });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+        recorder.start();
+        return { recorder, chunks };
+      }
     }
+  } catch (err) {
+    console.warn("Could not create MediaRecorder:", err);
   }
   return null;
-}
-
-function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props) {
@@ -190,13 +204,15 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState("");
   const [currentPhase, setCurrentPhase] = useState<Phase>("idle");
   const [repCount, setRepCount] = useState(0);
+  const [goodReps, setGoodReps] = useState(0);
+  const [badReps, setBadReps] = useState(0);
   const [currentFaults, setCurrentFaults] = useState<FormFault[]>([]);
   const [landmarks, setLandmarks] = useState<Landmarks[]>([]);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef(false);
 
   const videoUrl = useMemo(() => URL.createObjectURL(videoFile), [videoFile]);
 
@@ -209,90 +225,134 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
   const processVideo = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas) {
+      console.error("VideoPlayer refs not available");
+      return;
+    }
 
-    abortRef.current = false;
+    const exerciseConfig = getExerciseById(exerciseId);
+    const angleLines = exerciseConfig?.angleLines ?? [];
+
     setIsProcessing(true);
     setProgress(0);
     setError(null);
-
-    let poseLandmarker;
-    try {
-      poseLandmarker = await getPoseLandmarker();
-    } catch (err) {
-      console.error("Failed to load pose model:", err);
-      setError("Failed to load the pose detection model. Please check your connection and try again.");
-      setIsProcessing(false);
-      return;
-    }
-
-    const detector = new RepDetector(exerciseId);
+    setProcessingStage("Loading pose detection model...");
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        if (video.readyState >= 1) {
-          resolve();
-        } else {
-          const onMeta = () => { cleanup(); resolve(); };
-          const onErr = () => { cleanup(); reject(new Error("Failed to load video")); };
+      console.log("[Analysis] Starting...");
+      console.log("[Analysis] Video src:", video.src?.substring(0, 60));
+      console.log("[Analysis] Video readyState:", video.readyState);
+
+      let poseLandmarker;
+      try {
+        console.log("[Analysis] Loading pose model...");
+        poseLandmarker = await getPoseLandmarker();
+        console.log("[Analysis] Pose model loaded successfully");
+      } catch (err) {
+        console.error("[Analysis] Failed to load pose model:", err);
+        setError("Failed to load the pose detection model. Please check your connection and try again.");
+        setIsProcessing(false);
+        return;
+      }
+
+      setProcessingStage("Preparing video...");
+
+      const detector = new RepDetector(exerciseId);
+      console.log("[Analysis] RepDetector created for:", exerciseId);
+
+      if (video.readyState < 1) {
+        console.log("[Analysis] Waiting for video metadata...");
+        console.log("[Analysis] readyState:", video.readyState, "networkState:", video.networkState);
+
+        try {
+          await video.play();
+          video.pause();
+        } catch {
+          // Safari iOS: play() may reject if user hasn't interacted, but metadata may still load
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          if (video.readyState >= 1) { resolve(); return; }
+
+          const timeout = setTimeout(() => {
+            cleanup();
+            clearInterval(poll);
+            reject(new Error(`Video metadata load timed out (readyState=${video.readyState}, networkState=${video.networkState})`));
+          }, 20000);
+          const onMeta = () => { clearTimeout(timeout); cleanup(); clearInterval(poll); resolve(); };
+          const onErr = () => { clearTimeout(timeout); cleanup(); clearInterval(poll); reject(new Error("Failed to load video")); };
           const cleanup = () => {
             video.removeEventListener("loadedmetadata", onMeta);
+            video.removeEventListener("canplay", onMeta);
             video.removeEventListener("error", onErr);
           };
           video.addEventListener("loadedmetadata", onMeta);
+          video.addEventListener("canplay", onMeta);
           video.addEventListener("error", onErr);
-        }
-      });
-    } catch (err) {
-      console.error("Video load error:", err);
-      setError("Failed to load video metadata. Try a different video format.");
-      setIsProcessing(false);
-      return;
-    }
+          const poll = setInterval(() => {
+            if (video.readyState >= 1) {
+              clearTimeout(timeout);
+              cleanup();
+              clearInterval(poll);
+              resolve();
+            }
+          }, 500);
+        });
+      }
 
-    const w = video.videoWidth;
-    const h = video.videoHeight;
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      console.log("[Analysis] Video dimensions:", w, "x", h);
+      console.log("[Analysis] Video duration:", video.duration, "readyState:", video.readyState);
 
-    if (!w || !h) {
-      setError("Could not read video dimensions. The file may be corrupt.");
-      setIsProcessing(false);
-      return;
-    }
+      if (!w || !h) {
+        setError("Could not read video dimensions. The file may be corrupt.");
+        setIsProcessing(false);
+        return;
+      }
 
-    setVideoDimensions({ width: w, height: h });
-    canvas.width = w;
-    canvas.height = h;
+      if (!isFinite(video.duration) || video.duration <= 0) {
+        setError("Could not determine video duration. Try a different video file.");
+        setIsProcessing(false);
+        return;
+      }
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      setIsProcessing(false);
-      return;
-    }
+      setVideoDimensions({ width: w, height: h });
+      canvas.width = w;
+      canvas.height = h;
 
-    const recorderResult = tryCreateRecorder(canvas);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setError("Could not get canvas rendering context.");
+        setIsProcessing(false);
+        return;
+      }
 
-    const duration = video.duration;
+      setProcessingStage("Setting up recording...");
 
-    if (!isFinite(duration) || duration <= 0) {
-      setError("Could not determine video duration. Try a different video file.");
-      setIsProcessing(false);
-      return;
-    }
+      let recorderResult: { recorder: MediaRecorder; chunks: Blob[] } | null = null;
+      try {
+        recorderResult = tryCreateRecorder(canvas);
+        console.log("[Analysis] Recorder created:", !!recorderResult);
+      } catch (err) {
+        console.warn("[Analysis] Recorder creation failed (continuing without recording):", err);
+      }
 
-    const fps = 10;
-    const frameInterval = 1 / fps;
-    let currentTime = 0;
-    let frameCount = 0;
-    const totalFrames = Math.ceil(duration * fps);
+      const duration = video.duration;
+      const fps = 10;
+      const frameInterval = 1 / fps;
+      let currentTime = 0;
+      let frameCount = 0;
+      const totalFrames = Math.ceil(duration * fps);
 
-    try {
+      setProcessingStage("Analyzing frames...");
+      console.log(`[Analysis] Starting loop: ${totalFrames} frames, duration: ${duration.toFixed(2)}s`);
+
       while (currentTime < duration) {
-        if (abortRef.current) break;
-
         try {
           await seekTo(video, currentTime);
         } catch (seekErr) {
-          console.warn("Seek failed, skipping frame:", seekErr);
+          console.warn("[Analysis] Seek failed, skipping frame:", seekErr);
           currentTime += frameInterval;
           continue;
         }
@@ -311,8 +371,12 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
             setRepCount(frameResult.repCount);
             setCurrentFaults(frameResult.faults);
 
-            drawSkeleton(ctx, lm, w, h);
-            drawHud(ctx, w, h, exerciseId, frameResult.repCount, frameResult.phase, frameResult.faults, ((frameCount + 1) / totalFrames) * 100);
+            const result = detector.getResult();
+            setGoodReps(result.goodReps);
+            setBadReps(result.badReps);
+
+            drawAngleLines(ctx, lm, w, h, angleLines, frameResult.angles.primary, frameResult.phase);
+            drawHud(ctx, w, h, exerciseId, result.goodReps, result.badReps, frameResult.phase, frameResult.faults, ((frameCount + 1) / totalFrames) * 100);
           } else {
             const pct = ((frameCount + 1) / totalFrames) * 100;
             const barY = h - 6;
@@ -322,43 +386,53 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
             ctx.fillRect(0, barY, w * (pct / 100), 6);
           }
         } catch (frameErr) {
-          console.error("Frame processing error:", frameErr);
+          console.error("[Analysis] Frame processing error:", frameErr);
         }
 
         frameCount++;
         setProgress((frameCount / totalFrames) * 100);
 
         currentTime += frameInterval;
-        await yieldToMain();
+        await new Promise<void>((r) => setTimeout(r, 0));
       }
-    } catch (err) {
-      console.error("Processing loop error:", err);
-    }
 
-    if (recorderResult) {
-      await new Promise<void>((resolve) => {
-        const { recorder } = recorderResult;
-        if (recorder.state === "inactive") {
-          resolve();
-        } else {
-          recorder.onstop = () => resolve();
-          recorder.stop();
-        }
+      console.log(`[Analysis] Loop complete. Processed ${frameCount} frames.`);
+
+      setProcessingStage("Finalizing...");
+
+      if (recorderResult) {
+        await new Promise<void>((resolve) => {
+          const { recorder } = recorderResult;
+          if (recorder.state === "inactive") {
+            resolve();
+          } else {
+            recorder.onstop = () => resolve();
+            recorder.stop();
+          }
+        });
+      }
+
+      const recordedVideoUrl = recorderResult
+        ? URL.createObjectURL(new Blob(recorderResult.chunks, { type: "video/webm" }))
+        : videoUrl;
+
+      console.log("[Analysis] Complete! Reps:", detector.getResult().totalReps);
+
+      setIsProcessing(false);
+      setProcessingStage("");
+      const result = detector.getResult();
+      onAnalysisComplete({
+        ...result,
+        videoUrl,
+        recordedVideoUrl,
+        duration,
       });
+    } catch (err) {
+      console.error("[Analysis] Fatal error:", err);
+      setError(`Analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setIsProcessing(false);
+      setProcessingStage("");
     }
-
-    const recordedVideoUrl = recorderResult
-      ? URL.createObjectURL(new Blob(recorderResult.chunks, { type: "video/webm" }))
-      : videoUrl;
-
-    setIsProcessing(false);
-    const result = detector.getResult();
-    onAnalysisComplete({
-      ...result,
-      videoUrl,
-      recordedVideoUrl,
-      duration,
-    });
   }, [exerciseId, videoUrl, onAnalysisComplete]);
 
   return (
@@ -370,6 +444,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
           className="w-full"
           muted
           playsInline
+          preload="auto"
         />
         {landmarks.length > 0 && videoDimensions.width > 0 && (
           <Skeleton
@@ -378,12 +453,12 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
             height={videoDimensions.height}
           />
         )}
-        <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, pointerEvents: "none" }} />
+        <canvas ref={canvasRef} className="hidden" />
         {isProcessing && (
           <div className="absolute top-4 left-4 right-4">
             <div className="bg-black/70 backdrop-blur-sm rounded-lg p-3">
               <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-gray-300">Analyzing...</span>
+                <span className="text-gray-300">{processingStage || "Analyzing..."}</span>
                 <span className="text-indigo-400 font-mono">{Math.round(progress)}%</span>
               </div>
               <div className="w-full bg-gray-700 rounded-full h-2">
@@ -402,6 +477,10 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
                 <div className="text-center">
                   <div className="text-2xl font-bold text-white">{repCount}</div>
                   <div className="text-xs text-gray-400">Reps</div>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <span className="text-green-400">{goodReps}✓</span>
+                  <span className="text-red-400">{badReps}✗</span>
                 </div>
                 <div className="text-center">
                   <div className={`text-sm font-medium px-2 py-1 rounded ${

@@ -12,14 +12,24 @@ export interface RepResult {
   faults: FormFault[];
   primaryAngle: number;
   phase: Phase;
+  isGood: boolean;
 }
 
 export interface AnalysisResult {
   exercise: string;
   totalReps: number;
+  goodReps: number;
+  badReps: number;
   overallScore: number;
   reps: RepResult[];
   faults: FormFault[];
+}
+
+export interface AngleLine {
+  from: number;
+  vertex: number;
+  to: number;
+  label: string;
 }
 
 export interface ExerciseConfig {
@@ -37,6 +47,8 @@ export interface ExerciseConfig {
   };
   formChecks: FormCheck[];
   cameraView: "side" | "front" | "either";
+  reversed?: boolean;
+  angleLines: AngleLine[];
 }
 
 export interface FormCheck {

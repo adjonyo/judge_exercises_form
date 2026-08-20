@@ -5,11 +5,14 @@ interface RepData {
   score: number;
   faults: FormFault[];
   primaryAngle: number;
+  isGood: boolean;
 }
 
 interface Props {
   exercise: string;
   totalReps: number;
+  goodReps: number;
+  badReps: number;
   overallScore: number;
   reps: RepData[];
   faults: FormFault[];
@@ -47,9 +50,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, duration, recordedVideoUrl, onReset }: Props) {
-  const criticalFaults = faults.filter((f) => f.severity === "critical").length;
-  const warningFaults = faults.filter((f) => f.severity === "warning").length;
+export function ResultsPanel({ exercise, totalReps, goodReps, badReps, overallScore, reps, faults, duration, recordedVideoUrl, onReset }: Props) {
   const mins = Math.floor(duration / 60);
   const secs = Math.floor(duration % 60);
 
@@ -86,7 +87,21 @@ export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-gray-800 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-white">{totalReps}</div>
-          <div className="text-xs text-gray-400 mt-1">Reps</div>
+          <div className="text-xs text-gray-400 mt-1">Total Reps</div>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 text-center">
+          <div className="flex items-center justify-center gap-3">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-400">{goodReps}</div>
+              <div className="text-xs text-gray-500">Good</div>
+            </div>
+            <div className="text-gray-600">/</div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-400">{badReps}</div>
+              <div className="text-xs text-gray-500">Bad</div>
+            </div>
+          </div>
+          <div className="text-xs text-gray-400 mt-1">Quality</div>
         </div>
         <div className="bg-gray-800 rounded-xl p-4 flex flex-col items-center justify-center">
           <ScoreRing score={overallScore} />
@@ -97,14 +112,6 @@ export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, 
             {mins}:{secs.toString().padStart(2, "0")}
           </div>
           <div className="text-xs text-gray-400 mt-1">Duration</div>
-        </div>
-        <div className="bg-gray-800 rounded-xl p-4 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-xl font-bold text-red-400">{criticalFaults}</span>
-            <span className="text-gray-600">/</span>
-            <span className="text-xl font-bold text-amber-400">{warningFaults}</span>
-          </div>
-          <div className="text-xs text-gray-400 mt-1">Critical / Warn</div>
         </div>
       </div>
 
@@ -155,6 +162,9 @@ export function ResultsPanel({ exercise, totalReps, overallScore, reps, faults, 
                   }`}
                 >
                   {rep.score}
+                </span>
+                <span className={`text-xs ${rep.isGood ? "text-green-400" : "text-red-400"}`}>
+                  {rep.isGood ? "✓" : "✗"}
                 </span>
               </div>
               <div className="flex items-center gap-2">

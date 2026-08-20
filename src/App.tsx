@@ -9,8 +9,10 @@ import type { FormFault } from "./exercises/types";
 interface AnalysisResult {
   exercise: string;
   totalReps: number;
+  goodReps: number;
+  badReps: number;
   overallScore: number;
-  reps: { repNumber: number; score: number; faults: FormFault[]; primaryAngle: number }[];
+  reps: { repNumber: number; score: number; faults: FormFault[]; primaryAngle: number; isGood: boolean }[];
   faults: FormFault[];
   videoUrl: string;
   recordedVideoUrl: string;
@@ -107,6 +109,8 @@ function App() {
           <ResultsPanel
             exercise={result.exercise}
             totalReps={result.totalReps}
+            goodReps={result.goodReps}
+            badReps={result.badReps}
             overallScore={result.overallScore}
             reps={result.reps}
             faults={result.faults}

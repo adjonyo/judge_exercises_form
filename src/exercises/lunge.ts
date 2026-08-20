@@ -45,6 +45,10 @@ export const lungeConfig: ExerciseConfig = {
   thresholds: { down: 110, up: 160 },
   formChecks: lungeFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 23, vertex: 25, to: 27, label: "L" },
+    { from: 24, vertex: 26, to: 28, label: "R" },
+  ],
 };
 
 export function analyzeLunge(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

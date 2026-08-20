@@ -44,6 +44,10 @@ export const rowingConfig: ExerciseConfig = {
   thresholds: { down: 140, up: 60 },
   formChecks: rowingFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 11, vertex: 13, to: 15, label: "L" },
+    { from: 12, vertex: 14, to: 16, label: "R" },
+  ],
 };
 
 export function analyzeRowing(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

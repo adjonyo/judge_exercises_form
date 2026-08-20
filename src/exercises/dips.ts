@@ -42,9 +42,14 @@ export const dipsConfig: ExerciseConfig = {
   description: "Parallel bar dips — chest or triceps focus",
   category: "compound",
   primaryAngle: { joint: "elbow", side: "both" },
-  thresholds: { down: 100, up: 50 },
+  thresholds: { down: 90, up: 50 },
   formChecks: dipsFormChecks,
   cameraView: "side",
+  reversed: true,
+  angleLines: [
+    { from: 11, vertex: 13, to: 15, label: "L" },
+    { from: 12, vertex: 14, to: 16, label: "R" },
+  ],
 };
 
 export function analyzeDips(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

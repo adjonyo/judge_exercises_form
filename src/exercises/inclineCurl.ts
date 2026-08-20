@@ -40,6 +40,10 @@ export const inclineCurlConfig: ExerciseConfig = {
   thresholds: { down: 150, up: 60 },
   formChecks: inclineCurlFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 11, vertex: 13, to: 15, label: "L" },
+    { from: 12, vertex: 14, to: 16, label: "R" },
+  ],
 };
 
 export function analyzeInclineCurl(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

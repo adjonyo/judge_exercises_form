@@ -51,6 +51,10 @@ export const bulgarianSplitSquatConfig: ExerciseConfig = {
   thresholds: { down: 100, up: 155 },
   formChecks: bulgarianSplitSquatFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 23, vertex: 25, to: 27, label: "L" },
+    { from: 24, vertex: 26, to: 28, label: "R" },
+  ],
 };
 
 export function analyzeBulgarianSplitSquat(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {

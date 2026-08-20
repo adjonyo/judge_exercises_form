@@ -46,6 +46,10 @@ export const deadliftConfig: ExerciseConfig = {
   thresholds: { down: 100, up: 150 },
   formChecks: deadliftFormChecks,
   cameraView: "side",
+  angleLines: [
+    { from: 11, vertex: 23, to: 25, label: "L" },
+    { from: 12, vertex: 24, to: 26, label: "R" },
+  ],
 };
 
 export function analyzeDeadlift(lm: Landmarks[], phase: Phase): { angles: Record<string, number>; faults: FormFault[] } {
