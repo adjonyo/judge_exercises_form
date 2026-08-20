@@ -158,16 +158,26 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
       return;
     }
     const timeout = setTimeout(() => {
-      video.removeEventListener("seeked", handler);
+      clearInterval(poll);
+      video.removeEventListener("seeked", onSeeked);
       reject(new Error(`Seek timeout at ${clampedTime}s`));
     }, 5000);
-    const handler = () => {
+    const onSeeked = () => {
       clearTimeout(timeout);
-      video.removeEventListener("seeked", handler);
+      clearInterval(poll);
+      video.removeEventListener("seeked", onSeeked);
       resolve();
     };
-    video.addEventListener("seeked", handler);
+    video.addEventListener("seeked", onSeeked);
     video.currentTime = clampedTime;
+    const poll = setInterval(() => {
+      if (Math.abs(video.currentTime - clampedTime) < 0.1) {
+        clearTimeout(timeout);
+        clearInterval(poll);
+        video.removeEventListener("seeked", onSeeked);
+        resolve();
+      }
+    }, 200);
   });
 }
 
@@ -264,39 +274,37 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         console.log("[Analysis] Waiting for video metadata...");
         console.log("[Analysis] readyState:", video.readyState, "networkState:", video.networkState);
 
-        try {
-          await video.play();
-          video.pause();
-        } catch {
-          // Safari iOS: play() may reject if user hasn't interacted, but metadata may still load
-        }
+        video.load();
 
         await new Promise<void>((resolve, reject) => {
-          if (video.readyState >= 1) { resolve(); return; }
+          if (video.readyState >= 2) { resolve(); return; }
 
           const timeout = setTimeout(() => {
             cleanup();
             clearInterval(poll);
             reject(new Error(`Video metadata load timed out (readyState=${video.readyState}, networkState=${video.networkState})`));
-          }, 20000);
-          const onMeta = () => { clearTimeout(timeout); cleanup(); clearInterval(poll); resolve(); };
+          }, 30000);
+          const onData = () => { clearTimeout(timeout); cleanup(); clearInterval(poll); resolve(); };
           const onErr = () => { clearTimeout(timeout); cleanup(); clearInterval(poll); reject(new Error("Failed to load video")); };
           const cleanup = () => {
-            video.removeEventListener("loadedmetadata", onMeta);
-            video.removeEventListener("canplay", onMeta);
+            video.removeEventListener("loadeddata", onData);
+            video.removeEventListener("loadedmetadata", onData);
+            video.removeEventListener("canplay", onData);
             video.removeEventListener("error", onErr);
           };
-          video.addEventListener("loadedmetadata", onMeta);
-          video.addEventListener("canplay", onMeta);
+          video.addEventListener("loadeddata", onData);
+          video.addEventListener("loadedmetadata", onData);
+          video.addEventListener("canplay", onData);
           video.addEventListener("error", onErr);
           const poll = setInterval(() => {
-            if (video.readyState >= 1) {
+            console.log("[Analysis] Polling readyState:", video.readyState);
+            if (video.readyState >= 2) {
               clearTimeout(timeout);
               cleanup();
               clearInterval(poll);
               resolve();
             }
-          }, 500);
+          }, 300);
         });
       }
 
@@ -444,7 +452,6 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
           className="w-full"
           muted
           playsInline
-          preload="auto"
         />
         {landmarks.length > 0 && videoDimensions.width > 0 && (
           <Skeleton
