@@ -182,17 +182,26 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
+function canOpenWebM(): boolean {
+  const v = document.createElement("video");
+  return v.canPlayType("video/webm") !== "";
+}
+
 function tryCreateRecorder(canvas: HTMLCanvasElement): { recorder: MediaRecorder; chunks: Blob[]; mimeType: string } | null {
   try {
     const stream = canvas.captureStream(30);
     const types = [
+      "video/mp4",
       "video/webm;codecs=vp9",
       "video/webm;codecs=vp8",
       "video/webm",
-      "video/mp4",
     ];
     for (const mimeType of types) {
       if (MediaRecorder.isTypeSupported(mimeType)) {
+        if (mimeType.startsWith("video/webm") && !canOpenWebM()) {
+          console.warn(`[Recorder] ${mimeType} supported for recording but this browser cannot play WebM — skipping`);
+          return null;
+        }
         const chunks: Blob[] = [];
         const recorder = new MediaRecorder(stream, {
           mimeType,
@@ -420,6 +429,11 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         ? URL.createObjectURL(new Blob(recorderResult.chunks, { type: recorderResult.mimeType }))
         : videoUrl;
 
+      const recordedVideoMime = recorderResult?.mimeType ?? (videoFile.type || "video/webm");
+
+      console.log("[Analysis] Recorder mimeType:", recorderResult?.mimeType ?? "null (using original)");
+      console.log("[Analysis] Download MIME:", recordedVideoMime);
+
       console.log("[Analysis] Complete! Reps:", detector.getResult().totalReps);
 
       setIsProcessing(false);
@@ -429,7 +443,7 @@ export function VideoPlayer({ videoFile, exerciseId, onAnalysisComplete }: Props
         ...result,
         videoUrl,
         recordedVideoUrl,
-        recordedVideoMime: recorderResult?.mimeType ?? "video/webm",
+        recordedVideoMime,
         duration,
       });
     } catch (err) {
